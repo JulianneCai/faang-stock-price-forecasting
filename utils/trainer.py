@@ -5,8 +5,12 @@ from numpy import sqrt, log
 
 from sklearn.metrics import mean_squared_error
 from sklearn.model_selection import train_test_split
+from sklearn.svm import SVR
 
 import arch
+
+from xgboost import XGBRegressor 
+from lightgbm import LGBMRegressor
 
 from statsmodels.tsa.arima.model import ARIMA
 from statsmodels.tsa.ar_model import ar_select_order
@@ -36,6 +40,7 @@ class Trainer:
         self._symbol = symbol
         self._period = period
 
+
     def generate_features(self):
         """
         Generates all the features that we need
@@ -47,6 +52,9 @@ class Trainer:
 
         df['daily_returns_close'] = df['Close'].pct_change()
         df['daily_returns_open'] = df['Open'].pct_change()
+
+        df['daily_returns_close_squared'] = df['daily_returns_close'] ** 2
+        df['daily_returns_open_squared'] = df['daily_returns_open'] ** 2
 
         window = 2
 
@@ -62,6 +70,29 @@ class Trainer:
         df['volume_change'] = df['Volume'].diff()
         
         return df
+
+    def get_y_pred(self, estimator):
+        """
+        Get predictions for dependent variable. For best results, use one of the 
+        functions above to tune hyperparameters, and then pass it through this function.
+
+        Params:
+            estimator (XGBRegressor, LGBMRegressor, SVR, etc.): a choice of estimator 
+        
+        Returns:
+            pandas.DataFrame: predictions based off the estimator.
+        """
+        if isinstance(estimator, (XGBRegressor, LGBMRegressor)):
+            model = estimator.fit(self._x_train, self._y_train,
+                                  eval_set=[(self._x_train, self._y_train), 
+                                            (self._x_test, self._y_test)])
+            y_pred = model.predict(self._x_test)
+            return y_pred
+        elif isinstance(estimator, SVR):
+            model = estimator.fit(self._x_train, self._y_train)
+            y_pred = model.predict(self._x_test)
+            return y_pred 
+
 
     def partition_data(self, df):
         """
@@ -90,6 +121,7 @@ class Trainer:
         :returns: (bool) true if stationary, false if not
         """
         p_value = adfuller(df)[1]
+        print(p_value)
         if p_value <= 0.05:
             return True 
         else:
@@ -128,62 +160,12 @@ class Trainer:
 class ARIMATrainer(Trainer):
     def __init__(self, symbol, period, test_size, train_size):
         super().__init__(symbol, period, test_size, train_size)
-
-
-    def _mse_arima_model(self, x_train, y_true, p, q, d):
-        cfg = (p, q, d)
-        model = ARIMA(x_train, order=cfg)
-        model_fit = model.fit()
-
-        forecast = model_fit.forecast(steps=len(y_true))
-        y_pred = pd.Series(forecast)
-
-        return mean_squared_error(y_true, y_pred)
     
-    def _aic_arima_model(self, x_train, y_true, p, q, d):
-        cfg = (p, q, d)
-        model = ARIMA(x_train, order=cfg)
-        model_fit = model.fit()
-
-        return model_fit.aic
-
-    def _bic_arima_model(self, x_train, y_true, p, q, d):
-        cfg = (p, q, d)
-        model = ARIMA(x_train, order=cfg)
-        model_fit = model.fit()
-
-        return model_fit.bic
-
-    def grid_search_optimal_hyperparameters(self, x_train, y_true):
-        best_mse = float('inf') 
-        best_cfg = None
-
-        #  the p and q hyperparameters are given by statistically significant 
-        #  lags on the autocorrelation plot
-        p_values = self.get_lags(x_train)
-        q_values = self.get_lags(x_train)
-        d_values = []
-
-        print(p_values)
-
-        #  if the time series is stationary, then it does not have a unit root, hence d=0
-        if self.is_stationary(x_train):
-            d_values.append(0)
-        else:
-            #  TODO: find out how to calculate these d values
-            #  this is just a placeholder in the meantime
-            d_values = [1, 2, 3, 4]
-
-        for p in p_values:
-            for q in q_values:
-                for d in d_values:
-                    cfg = (p, q, d)
-                    mse = self._mse_arima_model(x_train, y_true, p, q, d)
-                    print(cfg, mse)
-                    if mse < best_mse:
-                        best_mse = mse
-                        best_cfg = cfg 
-        return best_cfg
+    def walk_forward_eval(self, y_train, y_test):
+        raise NotImplementedError
+    
+    def forecast_out_of_sample(self, y_train, y_test):
+        raise NotImplementedError
 
     def get_p_values(self):
         return self._p_values
@@ -204,18 +186,16 @@ class ARIMATrainer(Trainer):
         self._d_values = d_values
 
 
-
 class GARCHTrainer(Trainer):
-    def __init__(self, symbol, period, test_size, train_size, p_values, q_values):
+    def __init__(self, symbol, period, test_size, train_size):
         super().__init__(symbol, period, test_size, train_size)
 
-        self._train = super()._train
-        self._test = super()._test
-
-
-    def grid_search_optimal_hyperparameters(self, p_values, q_values):
+    def walk_forward_eval(self, y_train, y_test):
         raise NotImplementedError
     
+    def forecast_out_of_sample(self, y_train, y_test):
+        raise NotImplementedError
+
     def get_p_values(self):
         return self._p_values 
     
