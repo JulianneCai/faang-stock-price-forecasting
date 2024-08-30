@@ -70,6 +70,8 @@ class Trainer:
 
     def get_y_pred(self, estimator):
         """
+        TODO: move this to subclass
+
         Get predictions for dependent variable. For best results, use one of the 
         functions above to tune hyperparameters, and then pass it through this function.
 
@@ -164,6 +166,40 @@ class Trainer:
         self._period = period
 
 
+class XGBoostTrainer(Trainer):
+    def __init__(self, symbol, period):
+        super().__init__(symbol, period)
+
+    def forecast_in_sample(self, estimator, x_train, y_train, x_test, y_test):
+        model = estimator.fit(x_train, y_train, 
+                              eval_set = [(x_train, y_train), (x_test, y_test)]
+                              )
+        y_pred = model.predict(x_test)
+        return y_pred
+
+
+class LGBMTrainer(Trainer):
+    def __init__(self, symbol, period):
+        super().__init__(symbol, period)
+
+    def forecast_in_sample(self, estimator, x_train, y_train, x_test, y_test):
+        model = estimator.fit(x_train, y_train, 
+                              eval_set = [(x_train, y_train), (x_test, y_test)]
+                              )
+        y_pred = model.predict(x_test)
+        return y_pred
+
+
+class SVMTrainer(Trainer):
+    def __init__(self, symbol, period):
+        super().__init__(symbol, period)
+
+    def forecast_in_sample(self, estimator, x_train, y_train, x_test, y_test):
+        model = estimator.fit(x_train, y_train)
+        y_pred = model.predict(x_test)
+        return y_pred
+
+
 class ARIMATrainer(Trainer):
     """
     Concrete class representing an object that trains an ARIMA model, and then 
@@ -172,7 +208,7 @@ class ARIMATrainer(Trainer):
     def __init__(self, symbol, period, test_size, train_size):
         super().__init__(symbol, period, test_size, train_size)
     
-    def walk_forward_eval(self, y_train, y_test):
+    def walk_forward_eval(self, estimator, y_train, y_test):
         """
         Performs walk-forward analysis on the testing dataset. Model trains itself on the 
         training dataset, and makes a prediction for the next time step. The true value of 
@@ -187,7 +223,7 @@ class ARIMATrainer(Trainer):
         """
         raise NotImplementedError
     
-    def forecast_out_of_sample(self, y_train, y_test, horizon):
+    def forecast_out_of_sample(self, estimator, y_train, y_test, horizon):
         """
         Forecasts the target feature for the next few timesteps.
 
@@ -201,7 +237,7 @@ class ARIMATrainer(Trainer):
         """
         raise NotImplementedError
     
-    def forecast_in_sample(self, y_train, y_test):
+    def forecast_in_sample(self, estimator, y_train, y_test):
         """
         Forecasts y_test values using y_train values.
 
@@ -213,7 +249,6 @@ class ARIMATrainer(Trainer):
             pandas.Series: values forecasted by the ARIMA model
         """
         raise NotImplementedError
-
 
 
 class GARCHTrainer(Trainer):

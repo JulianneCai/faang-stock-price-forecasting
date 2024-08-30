@@ -7,6 +7,8 @@ from sklearn.metrics import mean_squared_error
 from sklearn.model_selection import train_test_split, KFold 
 from sklearn.svm import SVR
 
+from utils.estimator import ARIMAEstimator, GARCHEstimator, XGBEstimator, LGBMEstimator, SVMEstimator
+
 from statsmodels.tsa.arima.model import ARIMA
 
 from skopt import BayesSearchCV
@@ -141,7 +143,7 @@ class XGBTuner(HyperparameterTuner):
         Model performance is measured using k-fold cross validation with k=5.
 
         Returns:
-            XGBoost.XGBRegressor: an XGB regressor with the optimal hyperparameters
+            utils.estimator.XGBEstimator: class that stores the estimator, as well as its hyperparameters
         """
 
         param_space = {
@@ -162,7 +164,17 @@ class XGBTuner(HyperparameterTuner):
 
         print(f'Best hyperparameters for XGBRegressor are: {optimiser.best_params_}')
 
-        return optimiser.best_estimator_ 
+        params = optimiser.best_params_
+
+        estimator = XGBEstimator(
+            n_estimators=params['n_estimators'],
+            max_depth=params['max_depth'],
+            learning_rate=params['learning_rate'],
+            gamma=params['gamma'],
+            subsample=params['subsample']
+            )
+
+        return estimator
     
     def random_forest(self):
         """
@@ -186,7 +198,7 @@ class LGBMTuner(HyperparameterTuner):
         Model performance is measured using k-fold cross validation with 5 folds.
 
         Returns:
-            XGBoost.XGBRegressor: an XGB regressor with the optimal hyperparameters
+            utils.estimator.LGBMEstimator: class containing the estimator, as well as its hyperparameters
         """
 
         param_space = {
@@ -203,9 +215,15 @@ class LGBMTuner(HyperparameterTuner):
         
         optimiser.fit(self._x_train, self._y_train)
 
-        print(f'Best hyperparameters for LGBMRegressor are: {optimiser.best_params_}')
+        params = optimiser.best_params_
 
-        return optimiser.best_estimator_ 
+        estimator = LGBMEstimator(
+            n_estimators=params['n_estimators'],
+            max_depth=params['max_depth'],
+            learning_rate=params['learning_rate']
+        )
+
+        return estimator
 
 
 class SVMTuner(HyperparameterTuner):
@@ -229,9 +247,15 @@ class SVMTuner(HyperparameterTuner):
         
         optimiser.fit(self._x_train, self._y_train)
 
-        print(f'Best hyperparameters for SVC is: {optimiser.best_params_}')
+        params = optimiser.best_params_
 
-        return optimiser.best_estimator_
+        estimator = SVMEstimator(
+            C=params['C'],
+            kernel=params['kernel'],
+            degree=params['degree']
+        )
+
+        return estimator
     
 
 class ARIMATuner(HyperparameterTuner):
@@ -288,12 +312,12 @@ class ARIMATuner(HyperparameterTuner):
 
         #  the p and q hyperparameters are given by statistically significant 
         #  lags on the autocorrelation plot
-        p_values = self.get_lags(self.get_y_train)
-        q_values = self.get_lags(self.get_y_train)
+        p_values = self.get_lags(self.get_y_train())
+        q_values = self.get_lags(self.get_y_train())
         d_values = []
 
         #  if the time series is stationary, then it does not have a unit root, hence d=0
-        if self.is_stationary(self.get_y_train):
+        if self.is_stationary(self.get_y_train()):
             d_values.append(0)
         else:
             #  TODO: find out how to calculate these d values
@@ -305,14 +329,15 @@ class ARIMATuner(HyperparameterTuner):
                 for d in d_values:
                     cfg = (p, q, d)
                     if method == 'aic':
-                        score = self._aic_arima_model(self.get_y_train, p, q, d)
+                        score = self._aic_arima_model(self.get_y_train(), p, q, d)
                     elif method == 'bic':
-                        score = self._bic_arima_model(self.get_y_train, p, q, d)
+                        score = self._bic_arima_model(self.get_y_train(), p, q, d)
                     print(f'score = {score}, cfg = {cfg}')
                     if score < best_score:
                         best_score = score
                         best_cfg = cfg 
-        return best_cfg
+        model = ARIMAEstimator(self.get_y_train(), order=best_cfg)
+        return model
 
 
 class GARCHTuner(HyperparameterTuner):
@@ -325,4 +350,6 @@ class GARCHTuner(HyperparameterTuner):
 
     def grid_search(self, p_values, q_values):
         raise NotImplementedError
-    
+        best_p, best_q = None, None
+        model = GARCHEstimator(self.get_y_train(), p=best_p, q=best_q)
+        return model
