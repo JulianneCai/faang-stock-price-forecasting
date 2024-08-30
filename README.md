@@ -1,1 +1,1 @@
-# faang-stock-price-forecasting
+# Stock Price and Volatility Forecasting using ML Methods
