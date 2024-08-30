@@ -19,27 +19,24 @@ from statsmodels.tsa.stattools import adfuller
 
 class Trainer:
     """
-    Class that contains methods for extracting time series features, and hyperparameter values. 
-    It has ARIMATrainer and GARCHTrainer, which tunes hyperparameters for an ARIMA(p,q,d) model, 
-    and a GARCH(p,q) model. It also has a subclass VolatilityForecaster, which uses the tuned 
-    ARIMA and GARCH models to forecast volatility of a given stock.
+    Abstract class representing an object that trains a machine learning estimator 
+    on a training dataset, and then uses that to predict features, either in-sample 
+    or out-of-sample.
     """
-    def __init__(self, symbol, period, test_size, train_size):
+    def __init__(self, symbol, period):
         """
         Params:
             symbol (str): the stock symbol (e.g. "GOOG" for Google, "AAPL" for apple)
 
-            period (str): time period of stocks 
+            period (str): time period of stocks -- must be one of 
+            {'1d', '5d', '1mo', '3mo', '6mo', '1y', '2y', '5y', '10y', 'ytd', 'max'}
 
             test_size (float): size of test dataset. Sum of test_size and train_size must equal 1
 
             train_size (float): size of training dataset. Sum of test_size and train_size must equal 1
         """
-        self._test_size = test_size
-        self._train_size = train_size
         self._symbol = symbol
         self._period = period
-
 
     def generate_features(self):
         """
@@ -92,25 +89,7 @@ class Trainer:
             model = estimator.fit(self._x_train, self._y_train)
             y_pred = model.predict(self._x_test)
             return y_pred 
-
-
-    def partition_data(self, df):
-        """
-        Splits dataset into testing and training datasets.
-
-        Params:
-            df (pandas.DataFrame): the time series data
-
-        Returns: 
-            pandas.DataFrame: tuple containing training and testing dataset, in that order
-        """
-        train, test = train_test_split(df,
-                                                   train_size=self._train_size,
-                                                   test_size=self._test_size,
-                                                   shuffle=False,
-                                                   stratify=None)
-        return train, test
-    
+ 
     def is_stationary(self, df):
         """
         Checks if the time series is stationary using the Augmented Dickey-Fuller test
@@ -126,84 +105,164 @@ class Trainer:
             return True 
         else:
             return False
+        
+    def walk_forward_eval(self):
+        """
+        Abstract method implemented by subclasses
+        """
+        pass
+
+    def forecast_out_of_sample(self):
+        """
+        Abstract method implemented by subclasses
+        """
+        pass
+    
+    def forecast_in_sample(self):
+        """
+        Abstract method implemented by subclasses
+        """
+        pass
 
  
     def get_lags(self, df):
+        """
+        Obtains the statistically significant autocorrelation lags
+
+        Returns:
+            list of int: statistically siginificant lag values
+        """
         selection_results = ar_select_order(df, maxlag=8)
         return selection_results.ar_lags
 
     def get_symbol(self):
+        """
+        Returns:
+            str: stock symbol
+        """
         return self._symbol
     
     def set_symbol(self, symbol):
+        """
+        Params:
+            symbol (str): new stock symbol
+        """
         self._symbol = symbol 
 
     def get_period(self):
+        """
+        Returns:
+            str: time period
+        """
         return self._period 
     
     def set_period(self, period):
+        """
+        Params:
+            period (str): new time period
+        """
         self._period = period
-
-    def get_train_size(self):
-        return self._train_size
-
-    def set_train_size(self, train_size):
-        self._train_size = train_size
-
-    def get_test_size(self):
-        return self._test_size
-    
-    def set_test_size(self, test_size):
-        self._test_size = test_size
 
 
 class ARIMATrainer(Trainer):
+    """
+    Concrete class representing an object that trains an ARIMA model, and then 
+    predicts future values of target feature.
+    """
     def __init__(self, symbol, period, test_size, train_size):
         super().__init__(symbol, period, test_size, train_size)
     
     def walk_forward_eval(self, y_train, y_test):
+        """
+        Performs walk-forward analysis on the testing dataset. Model trains itself on the 
+        training dataset, and makes a prediction for the next time step. The true value of 
+        the next time step is appended to the training dataset, and the model is re-fitted using 
+        the same parameters.
+
+        Params:
+            y_train (pandas.Series): the time series training dataset 
+            y_test (pandas.Series): the time series testing dataset
+        Returns:
+            pandas.Series: predictions made by the ARIMA model
+        """
         raise NotImplementedError
     
-    def forecast_out_of_sample(self, y_train, y_test):
+    def forecast_out_of_sample(self, y_train, y_test, horizon):
+        """
+        Forecasts the target feature for the next few timesteps.
+
+        Params:
+            y_train (pandas.Series): the time series training dataset
+            y_test (pandas.Series): the time series testing dataset 
+            horizon (int): the number of time steps to forecast 
+        
+        Returns:
+            pandas.Series: values forecasted by the ARIMA model
+        """
+        raise NotImplementedError
+    
+    def forecast_in_sample(self, y_train, y_test):
+        """
+        Forecasts y_test values using y_train values.
+
+        Params:
+            y_train (pandas.Series): the time series training dataset
+            y_test (pandas.Series): the time series testing dataset 
+
+        Returns:
+            pandas.Series: values forecasted by the ARIMA model
+        """
         raise NotImplementedError
 
-    def get_p_values(self):
-        return self._p_values
-    
-    def set_p_values(self, p_values):
-        self._p_values = p_values
-
-    def get_q_values(self):
-        return self._q_values
-    
-    def set_q_values(self, q_values):
-        self._q_values = q_values
-
-    def get_d_values(self):
-        return self._d_values
-    
-    def set_d_values(self, d_values):
-        self._d_values = d_values
 
 
 class GARCHTrainer(Trainer):
+    """
+    Concrete class representing an object that trains a GARCH model, and then 
+    predicts future values of target feature. GARCH models are only used for 
+    volatility forecasting.
+    """
     def __init__(self, symbol, period, test_size, train_size):
         super().__init__(symbol, period, test_size, train_size)
 
-    def walk_forward_eval(self, y_train, y_test):
+    def walk_forward_eval(self):
+        """
+        Performs walk-forward analysis on the testing dataset. Model trains itself on the 
+        training dataset, and makes a prediction for the next time step. The true value of 
+        the next time step is appended to the training dataset, and the model is re-fitted using 
+        the same parameters.
+
+        Params:
+            y_train (pandas.Series): the time series training dataset 
+            y_test (pandas.Series): the time series testing dataset
+        Returns:
+            pandas.Series: predictions made by the GARCH model
+        """
         raise NotImplementedError
     
-    def forecast_out_of_sample(self, y_train, y_test):
+    def forecast_out_of_sample(self):
+        """
+        Forecasts the target feature for the next few timesteps.
+
+        Params:
+            y_train (pandas.Series): the time series training dataset
+            y_test (pandas.Series): the time series testing dataset 
+            horizon (int): the number of time steps to forecast 
+        
+        Returns:
+            pandas.Series: values forecasted by the GARCH model
+        """
         raise NotImplementedError
-
-    def get_p_values(self):
-        return self._p_values 
     
-    def set_p_values(self, p_values):
-        self._p_values = p_values 
+    def forecast_in_sample(self, y_train, y_test):
+        """
+        Forecasts y_test values using y_train values.
 
-    def get_q_values(self):
-        return self.get_q_values
-    
-    def set_q_values(self, q_values):
-        self._q_values = q_values
+        Params:
+            y_train (pandas.Series): the time series training dataset
+            y_test (pandas.Series): the time series testing dataset 
+
+        Returns:
+            pandas.Series: values forecasted by the GARCH model
+        """
+        raise NotImplementedError
