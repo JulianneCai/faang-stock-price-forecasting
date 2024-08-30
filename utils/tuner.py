@@ -7,7 +7,7 @@ from sklearn.metrics import mean_squared_error
 from sklearn.model_selection import train_test_split, KFold 
 from sklearn.svm import SVR
 
-from utils.estimator import ARIMAEstimator, GARCHEstimator, XGBEstimator, LGBMEstimator, SVMEstimator
+from utils.estimator import ARIMAEstimator, GARCHEstimator
 
 from statsmodels.tsa.arima.model import ARIMA
 
@@ -143,7 +143,8 @@ class XGBTuner(HyperparameterTuner):
         Model performance is measured using k-fold cross validation with k=5.
 
         Returns:
-            utils.estimator.XGBEstimator: class that stores the estimator, as well as its hyperparameters
+            skopt.BayesSearchCV: returns a fitted optimiser. Hyperparameters and estimators 
+            can be extracted using the best_params_() and best_estimator_() method
         """
 
         param_space = {
@@ -162,19 +163,7 @@ class XGBTuner(HyperparameterTuner):
         
         optimiser.fit(self._x_train, self._y_train)
 
-        print(f'Best hyperparameters for XGBRegressor are: {optimiser.best_params_}')
-
-        params = optimiser.best_params_
-
-        estimator = XGBEstimator(
-            n_estimators=params['n_estimators'],
-            max_depth=params['max_depth'],
-            learning_rate=params['learning_rate'],
-            gamma=params['gamma'],
-            subsample=params['subsample']
-            )
-
-        return estimator
+        return optimiser
     
     def random_forest(self):
         """
@@ -198,7 +187,8 @@ class LGBMTuner(HyperparameterTuner):
         Model performance is measured using k-fold cross validation with 5 folds.
 
         Returns:
-            utils.estimator.LGBMEstimator: class containing the estimator, as well as its hyperparameters
+            skopt.BayesSearchCV: returns a fitted optimiser. Hyperparameters and estimators 
+            can be extracted using the best_params_() and best_estimator_() method
         """
 
         param_space = {
@@ -215,15 +205,7 @@ class LGBMTuner(HyperparameterTuner):
         
         optimiser.fit(self._x_train, self._y_train)
 
-        params = optimiser.best_params_
-
-        estimator = LGBMEstimator(
-            n_estimators=params['n_estimators'],
-            max_depth=params['max_depth'],
-            learning_rate=params['learning_rate']
-        )
-
-        return estimator
+        return optimiser 
 
 
 class SVMTuner(HyperparameterTuner):
@@ -247,15 +229,7 @@ class SVMTuner(HyperparameterTuner):
         
         optimiser.fit(self._x_train, self._y_train)
 
-        params = optimiser.best_params_
-
-        estimator = SVMEstimator(
-            C=params['C'],
-            kernel=params['kernel'],
-            degree=params['degree']
-        )
-
-        return estimator
+        return optimiser
     
 
 class ARIMATuner(HyperparameterTuner):
